@@ -4,6 +4,8 @@ Windows 系统托盘网络环境监控工具，基于 [ai-ipcheck](https://githu
 
 使用 Claude Code、OpenAI API、Cursor 等 AI 工具时，IPv6 泄露、DNS 暴露、IP 风控、时区不一致都会导致连接异常甚至封号。`ipcheck` 提供了一次性诊断能力，而 IPCheck Monitor 将它变成**常驻后台的实时监控**——你不需要反复手动跑命令，有问题它会主动告诉你。
 
+![IPCheck Monitor 主界面](docs/screenshot.png)
+
 ## 检测项
 
 | 检测项 | 正常 | 异常告警 |
