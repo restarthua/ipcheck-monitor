@@ -49,7 +49,11 @@ Windows 系统托盘网络环境监控工具，基于 [ai-ipcheck](https://githu
 
 ## 快速开始
 
-### 方式一：直接运行
+### 方式一：下载 exe（推荐）
+
+前往 [Releases](https://github.com/restarthua/ipcheck-monitor/releases) 下载最新版 `IPCheckMonitor.exe`，双击运行即可，无需安装 Python 环境。
+
+### 方式二：直接运行
 
 ```bash
 pip install -r requirements.txt
