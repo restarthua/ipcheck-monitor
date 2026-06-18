@@ -15,7 +15,10 @@ from tkinter import ttk, messagebox
 from PIL import Image, ImageDraw
 import pystray
 
+import webbrowser
 from checker import run_check
+
+VERSION = "1.1.2"
 
 
 # ── 管理员权限 ─────────────────────────────────────────────
@@ -179,7 +182,7 @@ class IPCheckApp:
     # ── tkinter 窗口 ──────────────────────────────────────
     def _build_window(self):
         self.root = tk.Tk()
-        self.root.title("IPCheck Monitor")
+        self.root.title(f"IPCheck Monitor v{VERSION}")
         self.root.geometry("520x660")
         self.root.resizable(True, True)
         self.root.minsize(480, 500)
@@ -229,6 +232,9 @@ class IPCheckApp:
 
         self.settings_btn = ttk.Button(btn_frame, text="设置", command=self._open_settings)
         self.settings_btn.pack(side="left", padx=(8, 0))
+
+        self.about_btn = ttk.Button(btn_frame, text="关于", command=self._open_about)
+        self.about_btn.pack(side="left", padx=(8, 0))
 
         self.time_label = ttk.Label(btn_frame, text="", font=("Segoe UI", 9), foreground="#999")
         self.time_label.pack(side="right")
@@ -434,6 +440,33 @@ class IPCheckApp:
 
     def _tray_fix_dns(self, *args):
         self.root.after(0, self._fix_dns)
+
+    # ── 关于 ──────────────────────────────────────────────
+    def _open_about(self):
+        REPO_URL = "https://github.com/restarthua/ipcheck-monitor"
+        win = tk.Toplevel(self.root)
+        win.title("关于")
+        win.geometry("360x220")
+        win.resizable(False, False)
+        win.transient(self.root)
+        win.grab_set()
+
+        frame = ttk.Frame(win, padding=24)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text="IPCheck Monitor", font=("Segoe UI", 14, "bold")).pack()
+        ttk.Label(frame, text=f"v{VERSION}", font=("Segoe UI", 10), foreground="#666").pack(pady=(4, 12))
+        ttk.Label(frame, text="Windows 系统托盘网络环境监控工具", font=("Segoe UI", 10)).pack()
+        ttk.Label(
+            frame, text="基于 ai-ipcheck · by stormzhang",
+            font=("Segoe UI", 9), foreground="#999",
+        ).pack(pady=(2, 12))
+
+        link = ttk.Label(frame, text="GitHub", font=("Segoe UI", 10, "underline"), foreground="#0969da", cursor="hand2")
+        link.pack()
+        link.bind("<Button-1>", lambda e: webbrowser.open(REPO_URL))
+
+        ttk.Button(frame, text="关闭", command=win.destroy).pack(pady=(12, 0))
 
     # ── 设置 ──────────────────────────────────────────────
     def _open_settings(self):
