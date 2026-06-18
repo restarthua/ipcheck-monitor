@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Build output
+dist/
+build/
+
+# Runtime config (contains user-specific settings)
+config.json
+
+# IDE
+.vscode/
+.idea/
