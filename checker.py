@@ -147,11 +147,13 @@ def run_check() -> dict:
         has_bad = True
     elif not dns:
         conclusions.append(("warn", "DNS 获取失败，无法评估"))
+        has_bad = True
     else:
         conclusions.append(("ok", "DNS 未检测到国内服务商"))
 
     if not pub_ok:
         conclusions.append(("warn", "IP 信息获取失败，无法评估风险"))
+        has_bad = True
     elif result["ip_proxy"] or result["ip_hosting"]:
         score = result["risk_score"]
         if score is not None:
@@ -160,10 +162,12 @@ def run_check() -> dict:
                 has_bad = True
             elif score >= 30:
                 conclusions.append(("warn", f"IP 风险中等（{score}/100），建议关注"))
+                has_bad = True
             else:
                 conclusions.append(("ok", f"IP 风险低（{score}/100）"))
         else:
             conclusions.append(("warn", "IP 为机房/代理，未查到风险分数"))
+            has_bad = True
     else:
         conclusions.append(("ok", "IP 正常，无风险标记"))
 
@@ -174,6 +178,7 @@ def run_check() -> dict:
         has_bad = True
     else:
         conclusions.append(("warn", "时区无法比对"))
+        has_bad = True
 
     result["conclusions"] = conclusions
     result["overall_safe"] = not has_bad
