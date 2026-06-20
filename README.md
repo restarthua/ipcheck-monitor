@@ -24,6 +24,7 @@ Windows 系统托盘网络环境监控工具，基于 [ai-ipcheck](https://githu
 - **三色状态指示** — 托盘图标绿/黄/红，一眼看出网络状态
 - **异常弹窗通知** — 检测到问题时 Windows 系统通知弹窗提醒
 - **一键修复 DNS** — 检测到国内 DNS 时弹窗询问，一键切换为 Cloudflare 安全 DNS
+- **基线对比** — 导入当前位置/ISP/时区为基线，切换网络后自动对比并托盘通知
 - **详情窗口** — 双击托盘图标查看完整检测结果
 - **设置面板** — 检测间隔、网卡、DNS 服务器、时区均可自定义
 - **自动提权** — 启动时检测管理员权限，非管理员自动弹 UAC 提权
@@ -62,7 +63,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-### 方式二：打包为 exe
+### 方式三：打包为 exe
 
 ```bash
 pip install pyinstaller
