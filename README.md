@@ -6,6 +6,8 @@ Windows 系统托盘网络环境监控工具，基于 [ai-ipcheck](https://githu
 
 ![IPCheck Monitor 主界面](docs/screenshot.png)
 
+![基线对比功能](docs/screenshot-v1.2.0.png)
+
 ## 检测项
 
 | 检测项 | 正常 | 异常告警 |
