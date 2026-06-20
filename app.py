@@ -18,7 +18,7 @@ import pystray
 import webbrowser
 from checker import run_check
 
-VERSION = "1.1.2"
+VERSION = "1.2.0"
 
 
 # ── 管理员权限 ─────────────────────────────────────────────
@@ -174,6 +174,7 @@ class IPCheckApp:
         self.tray_icon = None
         self.last_alert_state = None
         self._last_dns_cn = None
+        self._baseline_mismatch = False
 
         self._build_window()
         self._build_tray()
@@ -229,6 +230,9 @@ class IPCheckApp:
 
         self.fix_dns_btn = ttk.Button(btn_frame, text="修复 DNS", command=self._fix_dns)
         self.fix_dns_btn.pack(side="left", padx=(8, 0))
+
+        self.baseline_btn = ttk.Button(btn_frame, text="导入基线", command=self._import_baseline)
+        self.baseline_btn.pack(side="left", padx=(8, 0))
 
         self.settings_btn = ttk.Button(btn_frame, text="设置", command=self._open_settings)
         self.settings_btn.pack(side="left", padx=(8, 0))
@@ -296,6 +300,11 @@ class IPCheckApp:
             if self.last_alert_state is False:
                 self._notify_recovery()
             self.last_alert_state = True
+
+        diffs = self._check_baseline(result)
+        if diffs and not self._baseline_mismatch:
+            self.root.after(0, self._notify_baseline_change, diffs)
+        self._baseline_mismatch = bool(diffs)
 
     def _manual_check(self):
         self.check_btn.configure(state="disabled")
@@ -376,6 +385,16 @@ class IPCheckApp:
             else:
                 lines.append(("warn", "无法比对\n"))
 
+        baseline = config.get("baseline")
+        if baseline:
+            lines.append(("label", "\n─── 基线对比 ───\n"))
+            diffs = self._check_baseline(r)
+            if diffs:
+                for d in diffs:
+                    lines.append(("bad", f"  ✗ {d}\n"))
+            else:
+                lines.append(("ok", "  ✓ 与基线一致\n"))
+
         lines.append(("label", "\n─── 结论 ───\n"))
         for level, msg in r.get("conclusions", []):
             prefix = {"ok": "✓", "warn": "!", "bad": "✗"}.get(level, "-")
@@ -391,6 +410,118 @@ class IPCheckApp:
         if dns_cn_now and self._last_dns_cn is not True:
             self._prompt_fix_dns()
         self._last_dns_cn = dns_cn_now
+
+    # ── 子窗口居中 ────────────────────────────────────────
+    def _center_on_parent(self, win, w, h):
+        win.update_idletasks()
+        px = self.root.winfo_x()
+        py = self.root.winfo_y()
+        pw = self.root.winfo_width()
+        ph = self.root.winfo_height()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        win.geometry(f"{w}x{h}+{x}+{y}")
+
+    # ── 基线 ──────────────────────────────────────────────
+    def _import_baseline(self):
+        baseline = config.get("baseline")
+        if baseline:
+            self._open_baseline_view()
+        else:
+            self._do_import_baseline()
+
+    def _do_import_baseline(self):
+        if not self.last_result or not self.last_result.get("public_ip"):
+            messagebox.showinfo("导入基线", "请先完成一次检测", parent=self.root)
+            return
+        r = self.last_result
+        baseline = {
+            "country": r.get("country", ""),
+            "region": r.get("region", ""),
+            "city": r.get("city", ""),
+            "isp": r.get("isp", ""),
+            "cli_timezone": r.get("cli_timezone", ""),
+        }
+        config["baseline"] = baseline
+        save_config(config)
+        self._baseline_mismatch = False
+        messagebox.showinfo(
+            "导入基线",
+            f"已保存当前环境为基线:\n"
+            f"位置: {baseline['country']} / {baseline['region']} / {baseline['city']}\n"
+            f"ISP: {baseline['isp']}\n"
+            f"时区: {baseline['cli_timezone']}",
+            parent=self.root,
+        )
+
+    def _open_baseline_view(self):
+        baseline = config.get("baseline", {})
+        win = tk.Toplevel(self.root)
+        win.title("基线配置")
+        win.resizable(False, False)
+        win.transient(self.root)
+        win.grab_set()
+        self._center_on_parent(win, 380, 280)
+
+        frame = ttk.Frame(win, padding=20)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text="当前基线", font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        ttk.Separator(frame, orient="horizontal").pack(fill="x", pady=(6, 10))
+
+        fields = [
+            ("国家", baseline.get("country", "")),
+            ("地区", baseline.get("region", "")),
+            ("城市", baseline.get("city", "")),
+            ("ISP", baseline.get("isp", "")),
+            ("时区", baseline.get("cli_timezone", "")),
+        ]
+        info_frame = ttk.Frame(frame)
+        info_frame.pack(fill="x")
+        for i, (label, value) in enumerate(fields):
+            ttk.Label(info_frame, text=f"{label}:", font=("Segoe UI", 10),
+                      foreground="#666").grid(row=i, column=0, sticky="w", pady=2)
+            ttk.Label(info_frame, text=value or "（空）", font=("Segoe UI", 10)).grid(
+                row=i, column=1, sticky="w", padx=(12, 0), pady=2)
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=(16, 0))
+
+        def reimport():
+            win.destroy()
+            self._do_import_baseline()
+
+        def clear():
+            config.pop("baseline", None)
+            save_config(config)
+            self._baseline_mismatch = False
+            win.destroy()
+
+        ttk.Button(btn_frame, text="重新导入", command=reimport).pack(side="left")
+        ttk.Button(btn_frame, text="清除基线", command=clear).pack(side="left", padx=(8, 0))
+        ttk.Button(btn_frame, text="关闭", command=win.destroy).pack(side="left", padx=(8, 0))
+
+    def _check_baseline(self, r):
+        baseline = config.get("baseline")
+        if not baseline or not r.get("public_ip"):
+            return []
+        diffs = []
+        for key, label in [
+            ("country", "国家"),
+            ("region", "地区"),
+            ("city", "城市"),
+            ("isp", "ISP"),
+            ("cli_timezone", "时区"),
+        ]:
+            old = baseline.get(key, "")
+            new = r.get(key, "")
+            if old and new and old != new:
+                diffs.append(f"{label}: {old} → {new}")
+        return diffs
+
+    def _notify_baseline_change(self, diffs):
+        body = "\n".join(diffs[:5])
+        self.tray_icon.notify(body, "IPCheck - 网络环境变化")
 
     # ── 通知 ──────────────────────────────────────────────
     def _notify_alert(self, r):
@@ -446,10 +577,10 @@ class IPCheckApp:
         REPO_URL = "https://github.com/restarthua/ipcheck-monitor"
         win = tk.Toplevel(self.root)
         win.title("关于")
-        win.geometry("360x220")
         win.resizable(False, False)
         win.transient(self.root)
         win.grab_set()
+        self._center_on_parent(win, 360, 200)
 
         frame = ttk.Frame(win, padding=24)
         frame.pack(fill="both", expand=True)
@@ -466,16 +597,14 @@ class IPCheckApp:
         link.pack()
         link.bind("<Button-1>", lambda e: webbrowser.open(REPO_URL))
 
-        ttk.Button(frame, text="关闭", command=win.destroy).pack(pady=(12, 0))
-
     # ── 设置 ──────────────────────────────────────────────
     def _open_settings(self):
         win = tk.Toplevel(self.root)
         win.title("设置")
-        win.geometry("420x320")
         win.resizable(False, False)
         win.transient(self.root)
         win.grab_set()
+        self._center_on_parent(win, 420, 320)
 
         frame = ttk.Frame(win, padding=20)
         frame.pack(fill="both", expand=True)
