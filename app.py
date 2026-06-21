@@ -18,7 +18,59 @@ import pystray
 import webbrowser
 from checker import run_check
 
-VERSION = "1.2.0"
+
+def get_network_interfaces():
+    """获取系统所有网络接口列表"""
+    import re
+    try:
+        result = subprocess.run(
+            ["netsh", "interface", "show", "interface"],
+            capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            check=True
+        )
+        stdout = result.stdout.decode("gbk", errors="replace")
+
+        lines = stdout.split('\n')
+        # 找到分隔线，确定接口名称列的起始位置
+        sep_idx = None
+        for idx, line in enumerate(lines):
+            if line.strip().startswith('---'):
+                sep_idx = idx
+                break
+        if sep_idx is None or sep_idx < 1:
+            return ["WLAN", "以太网", "Ethernet", "Local Area Connection"]
+
+        header = lines[sep_idx - 1]
+        # 用最后一个列标题的位置确定接口名称列起始（适配中英文）
+        col_start = -1
+        for marker in ['Interface', '接口']:
+            pos = header.find(marker)
+            if pos >= 0:
+                col_start = pos
+                break
+        if col_start < 0:
+            # 回退：按 2+ 空格分列，取最后一列
+            col_start = None
+
+        interfaces = []
+        skip_words = ['Loopback', 'Loop Back', '蓝牙', 'Bluetooth', 'Tunnel', 'Teredo']
+        for line in lines[sep_idx + 1:]:
+            if not line.strip():
+                continue
+            if col_start is not None:
+                name = line[col_start:].strip()
+            else:
+                parts = re.split(r'\s{2,}', line.strip())
+                name = parts[-1] if parts else ''
+            if name and not any(s in name for s in skip_words):
+                interfaces.append(name)
+
+        return interfaces if interfaces else ["WLAN", "以太网", "Ethernet", "Local Area Connection"]
+    except Exception:
+        return ["WLAN", "以太网", "Ethernet", "Local Area Connection"]
+
+VERSION = "1.2.1"
 
 
 # ── 管理员权限 ─────────────────────────────────────────────
@@ -174,6 +226,7 @@ class IPCheckApp:
         self.tray_icon = None
         self.last_alert_state = None
         self._last_dns_cn = None
+        self._dns_prompt_showing = False
         self._baseline_mismatch = False
 
         self._build_window()
@@ -195,11 +248,16 @@ class IPCheckApp:
         style.configure("Item.TLabel", font=("Segoe UI", 10))
         style.configure("Safe.TLabel", font=("Segoe UI", 12, "bold"), foreground="#2ea043")
         style.configure("Danger.TLabel", font=("Segoe UI", 12, "bold"), foreground="#dc3232")
+        style.configure("Small.TButton", font=("Segoe UI", 9))
 
         main = ttk.Frame(self.root, padding=20)
         main.pack(fill="both", expand=True)
 
-        ttk.Label(main, text="IPCheck Monitor", style="Header.TLabel").pack(anchor="w")
+        header_frame = ttk.Frame(main)
+        header_frame.pack(fill="x")
+        ttk.Label(header_frame, text="IPCheck Monitor", style="Header.TLabel").pack(side="left")
+        self.time_label = ttk.Label(header_frame, text="", font=("Segoe UI", 9), foreground="#999")
+        self.time_label.pack(side="right", anchor="e")
         ttk.Separator(main, orient="horizontal").pack(fill="x", pady=(8, 12))
 
         self.status_label = ttk.Label(main, text="等待首次检测...", style="Status.TLabel")
@@ -239,9 +297,6 @@ class IPCheckApp:
 
         self.about_btn = ttk.Button(btn_frame, text="关于", command=self._open_about)
         self.about_btn.pack(side="left", padx=(8, 0))
-
-        self.time_label = ttk.Label(btn_frame, text="", font=("Segoe UI", 9), foreground="#999")
-        self.time_label.pack(side="right")
 
         self.root.withdraw()
 
@@ -548,16 +603,23 @@ class IPCheckApp:
 
     def _prompt_fix_dns(self):
         """检测到国内 DNS 时弹窗询问是否立即修复（主线程调用）。"""
+        if self._dns_prompt_showing:
+            self.tray_icon.notify("仍在使用国内 DNS，请尽快修复", "IPCheck - DNS 异常")
+            return
         dns1 = config["dns_primary"]
         dns2 = config["dns_secondary"]
-        ans = self._topmost_msgbox(
-            messagebox.askyesno,
-            "DNS 异常",
-            f"检测到正在使用国内 DNS，可能暴露真实位置。\n\n"
-            f"是否立即切换为安全 DNS？\n  主: {dns1}\n  备: {dns2}",
-        )
-        if ans:
-            self._fix_dns()
+        self._dns_prompt_showing = True
+        try:
+            ans = self._topmost_msgbox(
+                messagebox.askyesno,
+                "DNS 异常",
+                f"检测到正在使用国内 DNS，可能暴露真实位置。\n\n"
+                f"是否立即切换为安全 DNS？\n  主: {dns1}\n  备: {dns2}",
+            )
+            if ans:
+                self._fix_dns()
+        finally:
+            self._dns_prompt_showing = False
 
     def _fix_dns(self):
         if fix_dns():
@@ -609,22 +671,41 @@ class IPCheckApp:
         frame = ttk.Frame(win, padding=20)
         frame.pack(fill="both", expand=True)
 
+        # 获取网卡列表
+        network_interfaces = get_network_interfaces()
         fields = [
             ("检测间隔（秒）", "check_interval", str(config["check_interval"])),
-            ("网卡名称", "net_card", config["net_card"]),
+            ("网卡名称", "net_card", config["net_card"], network_interfaces),
             ("主 DNS", "dns_primary", config["dns_primary"]),
             ("备 DNS", "dns_secondary", config["dns_secondary"]),
         ]
 
         entries = {}
-        for i, (label, key, default) in enumerate(fields):
+        net_card_row = None
+        for i, (label, key, default, *options) in enumerate(fields):
             ttk.Label(frame, text=label, font=("Segoe UI", 10)).grid(
                 row=i, column=0, sticky="w", pady=4,
             )
-            var = tk.StringVar(value=default)
-            entry = ttk.Entry(frame, textvariable=var, width=24)
-            entry.grid(row=i, column=1, columnspan=2, sticky="e", padx=(12, 0), pady=4)
-            entries[key] = var
+            if key == "net_card" and options:
+                net_card_row = i
+                iface_list = list(options[0])
+                if default and default not in iface_list:
+                    iface_list.insert(0, default)
+                var = tk.StringVar(value=default)
+                combo = ttk.Combobox(
+                    frame, textvariable=var, values=iface_list, width=21,
+                )
+                combo.grid(row=i, column=1, sticky="e", padx=(12, 0), pady=4)
+                entries[key] = var
+                ttk.Button(
+                    frame, text="↻", command=lambda: refresh_interfaces(),
+                    width=3, style="Small.TButton",
+                ).grid(row=i, column=2, padx=(4, 0), pady=4)
+            else:
+                var = tk.StringVar(value=default)
+                entry = ttk.Entry(frame, textvariable=var, width=24)
+                entry.grid(row=i, column=1, columnspan=2, sticky="e", padx=(12, 0), pady=4)
+                entries[key] = var
 
         row_tz = len(fields)
         ttk.Label(frame, text="时区", font=("Segoe UI", 10)).grid(
@@ -649,6 +730,28 @@ class IPCheckApp:
         )
 
         frame.columnconfigure(1, weight=1)
+        frame.columnconfigure(2, weight=1)
+
+        def refresh_interfaces():
+            interfaces = get_network_interfaces()
+            current_value = entries["net_card"].get()
+            if current_value and current_value not in interfaces:
+                interfaces.insert(0, current_value)
+            for widget in frame.grid_slaves(row=net_card_row, column=1):
+                widget.destroy()
+            for widget in frame.grid_slaves(row=net_card_row, column=2):
+                widget.destroy()
+
+            var = tk.StringVar(value=current_value)
+            combo = ttk.Combobox(
+                frame, textvariable=var, values=interfaces, width=21,
+            )
+            combo.grid(row=net_card_row, column=1, sticky="e", padx=(12, 0), pady=4)
+            entries["net_card"] = var
+            ttk.Button(
+                frame, text="↻", command=lambda: refresh_interfaces(),
+                width=3, style="Small.TButton",
+            ).grid(row=net_card_row, column=2, padx=(4, 0), pady=4)
 
         def on_save():
             try:

@@ -37,8 +37,9 @@ build.bat
 - Windows 弹窗/子进程调用必须加 `CREATE_NO_WINDOW` flag，防止控制台闪烁
 - 单实例保护用 Named Mutex（`Global\IPCheckMonitor_SingleInstance`），不要改回 lock file
 - 管理员权限检测：`_is_admin()` + `_elevate()`，`main()` 入口处调用；spec 不加 `uac_admin=True`（当前 PyInstaller 版本不支持，加了会报错）
-- DNS 弹窗用 `_last_dns_cn` 追踪状态变化，只在首次检测到国内 DNS 时弹（非每轮都弹）
+- DNS 弹窗用 `_last_dns_cn` 追踪状态变化，只在首次检测到国内 DNS 时弹（非每轮都弹）；`_dns_prompt_showing` 防止弹窗期间重复弹出，已有弹窗时改用托盘通知
 - 基线对比用 `_baseline_mismatch` 追踪状态变化，只在首次检测到差异时托盘通知（恢复一致后再变化才重新通知）；基线数据存 `config.json` 的 `baseline` 字段
+- 网卡列表用 `get_network_interfaces()` 从 `netsh interface show interface` 获取，按列偏移解析适配中英文，GBK 解码 + `errors="replace"` 兜底，`except Exception` 回退默认列表；设置面板用 Combobox 可选可编辑
 - 子窗口（关于、基线、设置）统一用 `_center_on_parent()` 居中于主窗口
 - 版本号在 `app.py` 顶部 `VERSION` 常量维护，发版时同步更新 `VERSION`、`ROAD_MAP.md` frontmatter `version`、GitHub Release tag
 - GitHub 仓库：`restarthua/ipcheck-monitor`（公开），Release 附带打包好的 exe
