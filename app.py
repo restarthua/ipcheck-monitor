@@ -70,7 +70,7 @@ def get_network_interfaces():
     except Exception:
         return ["WLAN", "以太网", "Ethernet", "Local Area Connection"]
 
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 
 
 # ── 管理员权限 ─────────────────────────────────────────────
@@ -102,6 +102,8 @@ DEFAULT_CONFIG = {
     "dns_secondary": "1.0.0.2",
     "net_card": "WLAN",
     "timezone": "",
+    "proxy_mode": "system",
+    "proxy_url": "http://127.0.0.1:10808",
 }
 
 TIMEZONE_OPTIONS = [
@@ -337,6 +339,14 @@ class IPCheckApp:
             time.sleep(config["check_interval"])
 
     def _do_check(self):
+        proxy_mode = config.get("proxy_mode", "system")
+        proxy_url = config.get("proxy_url", "")
+        _proxy_keys = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+        saved_env = {}
+        if proxy_mode == "custom" and proxy_url:
+            for k in _proxy_keys:
+                saved_env[k] = os.environ.get(k)
+                os.environ[k] = proxy_url
         try:
             result = run_check()
         except Exception as e:
@@ -344,6 +354,13 @@ class IPCheckApp:
                 "overall_safe": False,
                 "conclusions": [("bad", f"检测异常: {e}")],
             }
+        finally:
+            if proxy_mode == "custom" and proxy_url:
+                for k in _proxy_keys:
+                    if saved_env[k] is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = saved_env[k]
         self.last_result = result
         self.root.after(0, self._update_ui, result)
 
@@ -666,7 +683,7 @@ class IPCheckApp:
         win.resizable(False, False)
         win.transient(self.root)
         win.grab_set()
-        self._center_on_parent(win, 420, 320)
+        self._center_on_parent(win, 420, 400)
 
         frame = ttk.Frame(win, padding=20)
         frame.pack(fill="both", expand=True)
@@ -729,6 +746,40 @@ class IPCheckApp:
             row=row_tz, column=2, padx=(4, 0), pady=4,
         )
 
+        # 代理设置
+        _proxy_label_to_mode = {"系统代理": "system", "自定义代理": "custom"}
+        _proxy_mode_to_label = {"system": "系统代理", "custom": "自定义代理"}
+        row_proxy = row_tz + 1
+        ttk.Label(frame, text="代理模式", font=("Segoe UI", 10)).grid(
+            row=row_proxy, column=0, sticky="w", pady=4,
+        )
+        proxy_mode_var = tk.StringVar(
+            value=_proxy_mode_to_label.get(config.get("proxy_mode", "system"), "系统代理")
+        )
+        proxy_mode_combo = ttk.Combobox(
+            frame, textvariable=proxy_mode_var,
+            values=["系统代理", "自定义代理"], width=21, state="readonly",
+        )
+        proxy_mode_combo.grid(row=row_proxy, column=1, sticky="e", padx=(12, 0), pady=4)
+
+        row_proxy_url = row_proxy + 1
+        ttk.Label(frame, text="代理地址", font=("Segoe UI", 10)).grid(
+            row=row_proxy_url, column=0, sticky="w", pady=4,
+        )
+        proxy_url_var = tk.StringVar(value=config.get("proxy_url", "http://127.0.0.1:10808"))
+        proxy_url_entry = ttk.Entry(frame, textvariable=proxy_url_var, width=24)
+        proxy_url_entry.grid(row=row_proxy_url, column=1, columnspan=2, sticky="e", padx=(12, 0), pady=4)
+        if config.get("proxy_mode", "system") != "custom":
+            proxy_url_entry.configure(state="disabled")
+
+        def on_proxy_mode_change(*_):
+            if proxy_mode_var.get() == "自定义代理":
+                proxy_url_entry.configure(state="normal")
+            else:
+                proxy_url_entry.configure(state="disabled")
+
+        proxy_mode_var.trace_add("write", on_proxy_mode_change)
+
         frame.columnconfigure(1, weight=1)
         frame.columnconfigure(2, weight=1)
 
@@ -768,11 +819,13 @@ class IPCheckApp:
             config["dns_secondary"] = entries["dns_secondary"].get().strip()
             tz = tz_var.get().strip()
             config["timezone"] = tz
+            config["proxy_mode"] = _proxy_label_to_mode.get(proxy_mode_var.get(), "system")
+            config["proxy_url"] = proxy_url_var.get().strip()
             save_config(config)
             win.destroy()
 
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=row_tz + 1, column=0, columnspan=3, pady=(16, 0))
+        btn_frame.grid(row=row_proxy_url + 1, column=0, columnspan=3, pady=(16, 0))
         ttk.Button(btn_frame, text="保存", command=on_save).pack(side="left")
         ttk.Button(btn_frame, text="取消", command=win.destroy).pack(side="left", padx=(8, 0))
 
