@@ -1,5 +1,5 @@
 ---
-version: 1.2.2
+version: 1.2.3
 status: stable
 category: tool
 emoji: 🛡️
@@ -10,6 +10,10 @@ emoji: 🛡️
 Windows 系统托盘网络环境监控工具。定时调用 ipcheck 检测 IPv6 泄露、DNS 国内服务商、IP 风险评分、时区一致性，异常时托盘变色并弹窗提醒。
 
 ## 已完成
+
+### v1.2.3 (2026-06-30)
+
+- 修复「系统代理」模式切换后检测仍走代理：`_do_check()` system 分支从「不干预」改为主动注入 IE 注册表系统代理（新增 `get_windows_proxy()` 读 `ProxyEnable`/`ProxyServer`），IE 未开代理时清空环境变量确保直连，覆盖环境变量残留；详情面板新增「代理」行展示检测实际走的代理
 
 ### v1.2.2 (2026-06-27)
 

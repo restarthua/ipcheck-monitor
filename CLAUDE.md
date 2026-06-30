@@ -41,7 +41,7 @@ build.bat
 - 基线对比用 `_baseline_mismatch` 追踪状态变化，只在首次检测到差异时托盘通知（恢复一致后再变化才重新通知）；基线数据存 `config.json` 的 `baseline` 字段
 - 网卡列表用 `get_network_interfaces()` 从 `netsh interface show interface` 获取，按列偏移解析适配中英文，GBK 解码 + `errors="replace"` 兜底，`except Exception` 回退默认列表；设置面板用 Combobox 可选可编辑
 - 子窗口（关于、基线、设置）统一用 `_center_on_parent()` 居中于主窗口
-- 代理模式存 `config.json` 的 `proxy_mode`（`"system"` 或 `"custom"`）和 `proxy_url` 字段；`"custom"` 时 `_do_check()` 在调用 `run_check()` 前临时注入 6 个代理环境变量（HTTP/HTTPS/ALL，大小写各一），执行完毕后恢复原值
+- 代理模式存 `config.json` 的 `proxy_mode`（`"system"` 或 `"custom"`）和 `proxy_url` 字段；`_do_check()` 在调用 `run_check()` 前临时注入 6 个代理环境变量（HTTP/HTTPS/ALL，大小写各一），执行完毕后恢复原值——`"custom"` 注入 `proxy_url`；`"system"` 注入 `get_windows_proxy()` 从 IE 注册表（`HKCU\...\Internet Settings` 的 `ProxyEnable`/`ProxyServer`）读出的系统代理，IE 未开代理时清空环境变量确保直连（覆盖残留）；PAC 自动配置脚本和 socks 代理不支持（requests 固有限制）
 - 版本号在 `app.py` 顶部 `VERSION` 常量维护，发版时同步更新 `VERSION`、`ROAD_MAP.md` frontmatter `version`、GitHub Release tag
 - GitHub 仓库：`restarthua/ipcheck-monitor`（公开），Release 附带打包好的 exe
 

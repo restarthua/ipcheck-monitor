@@ -70,7 +70,45 @@ def get_network_interfaces():
     except Exception:
         return ["WLAN", "以太网", "Ethernet", "Local Area Connection"]
 
-VERSION = "1.2.2"
+
+def get_windows_proxy():
+    """读取 Windows IE 注册表系统代理（Clash/v2ray「系统代理」开关写入的位置）。
+
+    返回可直接注入环境变量的 proxy_url，或 None（ProxyEnable=0 或读取失败，表示直连）。
+    只读 IE 注册表，不读环境变量代理；PAC 自动配置脚本和 socks 代理不支持。
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+        ) as key:
+            enable, _ = winreg.QueryValueEx(key, "ProxyEnable")
+            if not enable:
+                return None
+            server, _ = winreg.QueryValueEx(key, "ProxyServer")
+            if not server:
+                return None
+            # ProxyServer 两种格式："host:port" 或 "http=host:port;https=host:port;..."
+            if "=" in server:
+                parts = {}
+                for seg in server.split(";"):
+                    if "=" in seg:
+                        k, v = seg.split("=", 1)
+                        parts[k.strip().lower()] = v.strip()
+                server = parts.get("http") or parts.get("https") or next(iter(parts.values()), "")
+            if not server:
+                return None
+            if not server.startswith(("http://", "https://", "socks")):
+                server = "http://" + server
+            return server
+    except Exception:
+        return None
+
+
+VERSION = "1.2.3"
 
 
 # ── 管理员权限 ─────────────────────────────────────────────
@@ -343,10 +381,24 @@ class IPCheckApp:
         proxy_url = config.get("proxy_url", "")
         _proxy_keys = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
         saved_env = {}
+        # system: 注入 IE 系统代理，IE 未开则清空环境变量确保直连（覆盖任何残留）
+        # custom: 注入 proxy_url；地址为空则不干预
         if proxy_mode == "custom" and proxy_url:
+            inject_url = proxy_url
+            do_inject = True
+        elif proxy_mode == "system":
+            inject_url = get_windows_proxy()
+            do_inject = True
+        else:
+            inject_url = None
+            do_inject = False
+        if do_inject:
             for k in _proxy_keys:
                 saved_env[k] = os.environ.get(k)
-                os.environ[k] = proxy_url
+                if inject_url:
+                    os.environ[k] = inject_url
+                else:
+                    os.environ.pop(k, None)
         try:
             result = run_check()
         except Exception as e:
@@ -355,7 +407,7 @@ class IPCheckApp:
                 "conclusions": [("bad", f"检测异常: {e}")],
             }
         finally:
-            if proxy_mode == "custom" and proxy_url:
+            if do_inject:
                 for k in _proxy_keys:
                     if saved_env[k] is None:
                         os.environ.pop(k, None)
@@ -437,6 +489,15 @@ class IPCheckApp:
             lines.append(("ok", f"{r.get('country', '')} / {r.get('region', '')} / {r.get('city', '')}\n"))
             lines.append(("label", "ISP:       "))
             lines.append(("ok", f"{r.get('isp', '')}\n"))
+
+        # 代理：展示检测期间实际生效的代理（system 走 IE、custom 走自定义、直连为空）
+        proxy_envs = r.get("proxy_envs") or {}
+        lines.append(("label", "代理:      "))
+        if proxy_envs:
+            uniq = list(dict.fromkeys(proxy_envs.values()))
+            lines.append(("ok", ", ".join(uniq) + "\n"))
+        else:
+            lines.append(("ok", "直连（未走代理）\n"))
 
         if r.get("risk_display"):
             lines.append(("label", "IP 风险:   "))
